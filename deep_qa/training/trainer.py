@@ -114,6 +114,10 @@ class Trainer:
             pretrainer = concrete_pretrainers[pretrainer_type](self, pretrainer_param)
             self.pretrainers.append(pretrainer)
 
+        # Use a data generator?
+        self.use_data_generator = params.pop('use_data_generator', False)
+        self.steps_per_epoch = params.pop('steps_per_epoch', None)
+
         # We've now processed all of the parameters, and we're the base class, so there should not
         # be anything left.
         if len(params.keys()) != 0:
@@ -281,9 +285,13 @@ class Trainer:
         train_data, val_data, test_data = self.prepare_data(self.train_files, self.max_training_instances,
                                                             self.validation_files,
                                                             self.test_files)
-        self.training_dataset, self.train_input, self.train_labels = train_data
-        self.validation_dataset, self.validation_input, self.validation_labels = val_data
-        self.test_dataset, self.test_input, self.test_labels = test_data
+        if not self.use_data_generator:
+            self.training_dataset, self.train_input, self.train_labels = train_data
+            self.validation_dataset, self.validation_input, self.validation_labels = val_data
+            self.test_dataset, self.test_input, self.test_labels = test_data
+        else:
+            self.train_input, self.validation_input, self.test_input = (
+                train_data, val_data, test_data)
 
         # We need to actually do pretraining _after_ we've loaded the training data, though, as we
         # need to build the models to be consistent between training and pretraining.  The training
@@ -320,19 +328,31 @@ class Trainer:
 
         # Now we actually train the model using various Keras callbacks to control training.
         callbacks = self._get_callbacks()
-        kwargs = {'epochs': self.num_epochs, 'callbacks': [callbacks], 'batch_size': self.batch_size}
-        # We'll check for explicit validation data first; if you provided this, you definitely
-        # wanted to use it for validation.  self.keras_validation_split is non-zero by default,
-        # so you may have left it above zero on accident.
-        if self.validation_input is not None:
-            kwargs['validation_data'] = (self.validation_input, self.validation_labels)
-        elif self.keras_validation_split > 0.0:
-            kwargs['validation_split'] = self.keras_validation_split
+        kwargs = {'epochs': self.num_epochs, 'callbacks': [callbacks]}
+
+        if not self.use_data_generator:
+            kwargs['batch_size'] = self.batch_size
+
+            # We'll check for explicit validation data first; if you provided this, you definitely
+            # wanted to use it for validation.  self.keras_validation_split is non-zero by default,
+            # so you may have left it above zero on accident.
+            if self.validation_input is not None:
+                kwargs['validation_data'] = (self.validation_input, self.validation_labels)
+            elif self.keras_validation_split > 0.0:
+                kwargs['validation_split'] = self.keras_validation_split
+
+        else:
+            # keras needs `steps_per_epoch`, the number of batches per epoch.
+            kwargs['steps_per_epoch'] = self.steps_per_epoch
+            kwargs['validation_data'] = self.validation_input
 
         # add the user-specified arguments to fit
         kwargs.update(self.fit_kwargs)
         # We now pass all the arguments to the model's fit function, which does all of the training.
-        history = self.model.fit(self.train_input, self.train_labels, **kwargs)
+        if not self.use_data_generator:
+            history = self.model.fit(self.train_input, self.train_labels, **kwargs)
+        else:
+            history = self.model.fit_generator(self.train_input, **kwargs)
         # After finishing training, we save the best weights and
         # any auxillary files, such as the model config.
 
@@ -344,7 +364,10 @@ class Trainer:
         # If there are test files, we evaluate on the test data.
         if self.test_files:
             logger.info("Evaluting model on the test set.")
-            scores = self.model.evaluate(self.test_input, self.test_labels)
+            if not self.use_data_generator:
+                scores = self.model.evaluate(self.test_input, self.test_labels)
+            else:
+                scores = self.model.evaluate_generator(self.test_input)
             for idx, metric in enumerate(self.model.metrics_names):
                 print("{}: {}".format(metric, scores[idx]))
 
