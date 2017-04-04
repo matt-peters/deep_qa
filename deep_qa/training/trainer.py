@@ -117,6 +117,8 @@ class Trainer:
         # Use a data generator?
         self.use_data_generator = params.pop('use_data_generator', False)
         self.steps_per_epoch = params.pop('steps_per_epoch', None)
+        # to evaluate on test set, need to pass in the number of steps
+        self.test_steps = params.pop('test_steps', None)
 
         # We've now processed all of the parameters, and we're the base class, so there should not
         # be anything left.
@@ -367,7 +369,8 @@ class Trainer:
             if not self.use_data_generator:
                 scores = self.model.evaluate(self.test_input, self.test_labels)
             else:
-                scores = self.model.evaluate_generator(self.test_input)
+                scores = self.model.evaluate_generator(self.test_input,
+                                                       self.test_steps)
             for idx, metric in enumerate(self.model.metrics_names):
                 print("{}: {}".format(metric, scores[idx]))
 
