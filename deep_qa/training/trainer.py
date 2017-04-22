@@ -318,7 +318,7 @@ class Trainer:
         # so you may have left it above zero on accident.
         if self.validation_arrays is not None:
             kwargs['validation_data'] = self.validation_arrays
-        elif self.validation_split > 0.0:
+        elif self.validation_split > 0.0 and isinstance(self.training_arrays, tuple):
             kwargs['validation_split'] = self.validation_split
 
         # Add the user-specified arguments to fit.
