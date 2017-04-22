@@ -152,7 +152,10 @@ class Params(MutableMapping):
             raise ConfigurationError("Extra parameters passed to {}: {}".format(class_name, self.params))
 
     def __getitem__(self, key):
-        return self.__check_is_dict(key, self.params[key])
+        if key in self.params:
+            return self.__check_is_dict(key, self.params[key])
+        else:
+            raise KeyError
 
     def __setitem__(self, key, value):
         self.params[key] = value
