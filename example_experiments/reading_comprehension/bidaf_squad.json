@@ -31,6 +31,6 @@
     "max_validation_instances": 100,
     "use_data_generator": true,
     "use_dynamic_padding": true,
-    "validation_files": ["/efs/data/dlfa/sciq_da/processed/dev.tsv"],
-    "train_files": ["/efs/data/dlfa/sciq_da/processed/train.tsv"]
+    "validation_files": ["/efs/data/dlfa/squad/processed/dev.tsv"],
+    "train_files": ["/efs/data/dlfa/squad/processed/train.tsv"]
 }

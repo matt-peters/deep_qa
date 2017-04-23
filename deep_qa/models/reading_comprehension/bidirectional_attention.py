@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 from keras.layers import Dense, Input, Concatenate, TimeDistributed
 from overrides import overrides
@@ -220,6 +220,9 @@ class BidirectionalAttentionFlow(TextTrainer):
         # two word lengths are guaranteed to be the same and BiDAF ignores
         # self.num_sentence_words.
         self._set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
+
+    def _get_instance_sorting_keys(self) -> List[str]:  # pylint: disable=no-self-use
+        return ['num_passage_words', 'num_question_words']
 
     @classmethod
     def _get_custom_objects(cls):
