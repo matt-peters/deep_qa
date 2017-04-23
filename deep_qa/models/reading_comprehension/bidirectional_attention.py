@@ -204,13 +204,10 @@ class BidirectionalAttentionFlow(TextTrainer):
 
     @overrides
     def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
-        # Adding this because we're bypassing num_sentence_words in our model, but TextTrainer
-        # expects it.
-        padding_lengths['num_sentence_words'] = None
         super(BidirectionalAttentionFlow, self)._set_padding_lengths(padding_lengths)
-        if self.num_passage_words is None:
+        if not self.use_dynamic_padding and self.num_passage_words is None:
             self.num_passage_words = padding_lengths['num_passage_words']
-        if self.num_question_words is None:
+        if not self.use_dynamic_padding and self.num_question_words is None:
             self.num_question_words = padding_lengths['num_question_words']
 
     @overrides
