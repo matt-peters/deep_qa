@@ -6,7 +6,7 @@ from overrides import overrides
 from ...data.instances.reading_comprehension import CharacterSpanInstance
 from ...layers import ComplexConcat, Highway
 from ...layers.attention import MatrixAttention, MaskedSoftmax, WeightedSum
-from ...layers.backend import Max, Repeat
+from ...layers.backend import Max, RepeatLike, Repeat
 from ...training import TextTrainer
 from ...training.models import DeepQaModel
 from ...common.params import Params
@@ -139,9 +139,14 @@ class BidirectionalAttentionFlow(TextTrainer):
 
         # Then he repeats this question/passage vector for every word in the passage, and uses it
         # as an additional input to the hidden layers above.
-        repeat_layer = Repeat(axis=1, repetitions=self.num_passage_words)
-        # Shape: (batch_size, num_passage_words, embedding_dim * 2)
-        tiled_question_passage_vector = repeat_layer(question_passage_vector)
+        if self.num_passage_words is None:
+            repeat_layer = RepeatLike(axis=1, copy_from_axis=1)
+            # Shape: (batch_size, num_passage_words, embedding_dim * 2)
+            tiled_question_passage_vector = repeat_layer([question_passage_vector, encoded_passage])
+        else:
+            repeat_layer = Repeat(axis=1, repetitions=self.num_passage_words)  # pylint: disable=redefined-variable-type
+            # Shape: (batch_size, num_passage_words, embedding_dim * 2)
+            tiled_question_passage_vector = repeat_layer(question_passage_vector)
 
         # Shape: (batch_size, num_passage_words, embedding_dim * 8)
         complex_concat_layer = ComplexConcat(combination='1,2,1*2,1*3', name='final_merged_passage')
@@ -176,9 +181,15 @@ class BidirectionalAttentionFlow(TextTrainer):
         # his figure makes it clear this is what he intended; he just wrote the equations wrong).
         # Shape: (batch_size, num_passage_words, embedding_dim * 2)
         sum_layer = WeightedSum(name="passage_weighted_by_predicted_span", use_masking=False)
-        repeat_layer = Repeat(axis=1, repetitions=self.num_passage_words)
-        passage_weighted_by_predicted_span = repeat_layer(sum_layer([modeled_passage,
-                                                                     span_begin_probabilities]))
+        if self.num_passage_words is None:
+            repeat_layer = RepeatLike(axis=1, copy_from_axis=1)
+            passage_weighted_by_predicted_span = repeat_layer([sum_layer([modeled_passage,
+                                                                          span_begin_probabilities]),
+                                                               encoded_passage])
+        else:
+            repeat_layer = Repeat(axis=1, repetitions=self.num_passage_words)  # pylint: disable=redefined-variable-type
+            passage_weighted_by_predicted_span = repeat_layer(sum_layer([modeled_passage,
+                                                                         span_begin_probabilities]))
         span_end_representation = ComplexConcat(combination="1,2,3,2*3")([final_merged_passage,
                                                                           modeled_passage,
                                                                           passage_weighted_by_predicted_span])
@@ -232,6 +243,7 @@ class BidirectionalAttentionFlow(TextTrainer):
         custom_objects["MatrixAttention"] = MatrixAttention
         custom_objects["Max"] = Max
         custom_objects["Repeat"] = Repeat
+        custom_objects["RepeatLike"] = RepeatLike
         custom_objects["WeightedSum"] = WeightedSum
         return custom_objects
 

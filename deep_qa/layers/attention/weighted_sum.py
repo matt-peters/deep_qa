@@ -71,39 +71,51 @@ class WeightedSum(MaskedLayer):
 
     @overrides
     def call(self, inputs, mask=None):
+        # pylint: disable=redefined-variable-type
         matrix, attention_vector = inputs
-        matrix_shape = K.int_shape(matrix)
-        matrix = self._expand_matrix_if_necessary(matrix, matrix_shape[:-1], attention_vector)
+        matrix = self._expand_matrix_if_necessary(matrix, attention_vector, K.ndim(matrix) - 1)
         if mask is None:
             matrix_mask = None
         else:
             matrix_mask = mask[0]
         if self.use_masking and matrix_mask is not None:
-            matrix_mask = self._expand_matrix_if_necessary(matrix_mask, matrix_shape[:-1], attention_vector)
+            matrix_mask = self._expand_matrix_if_necessary(matrix_mask, attention_vector, K.ndim(matrix) - 1)
             # Doing a multiply here instead of a `switch` to avoid allocating another large tensor.
             matrix = K.cast(K.expand_dims(matrix_mask), 'float32') * matrix
         return K.sum(K.expand_dims(attention_vector, axis=-1) * matrix, -2)
 
     @staticmethod
-    def _expand_matrix_if_necessary(matrix, matrix_shape, attention_vector):
+    def _expand_matrix_if_necessary(matrix, attention_vector, num_matrix_dims: int):
         """
-        This function gets the tiles the matrix to have the same shape as the attention vector,
-        ignoring the embedding dimension.  We take the shape as input (where the shape already has
-        the embedding dimension removed) so we can call this on the mask as well as the input
-        matrix.
+        This function tiles the matrix to get whatever missing dimensions there are from
+        the attention vector.  We assume that all of the matrix dimensions are already in the
+        attention "vector", and we just add dimensions to the beginning of the matrix (after the
+        batch dimension).  In order to do the tiling correctly, we need the attention vector itself
+        (to get its runtime shape), and the number of dimensions in the matrix (so we can ignore
+        them from the attention vector).
+
+        Note that ``num_matrix_dims`` is the number of dimensions `not including the embedding
+        dimension`.  That it, it's the number of dimensions that we expect to be in common with the
+        attention vector.
         """
-        attention_shape = K.int_shape(attention_vector)
-        if matrix_shape != attention_shape:
-            # We'll take care of the batch size first.  After this, the matrix_shape should match
-            # the end of the attention_shape exactly.
-            assert matrix_shape[0] == attention_shape[0], "somehow batch sizes don't match"
-            matrix_shape = matrix_shape[1:]
-            attention_shape = attention_shape[1:]
-            assert attention_shape[-len(matrix_shape):] == matrix_shape, ("matrix_shape must be "
-                                                                          "subset of attention_shape")
-            for i in range(len(attention_shape) - len(matrix_shape)):
-                matrix = K.expand_dims(matrix, axis=i+1)  # +1 to account for batch_size
-                matrix = K.repeat_elements(matrix, attention_shape[i], axis=i+1)
+        num_attention_dims = K.ndim(attention_vector)
+        if num_matrix_dims == num_attention_dims:
+            # If the matrix already has all of the dimensions of the attention vector, there's
+            # nothing for us to do.
+            return matrix
+        for _ in range(num_attention_dims - num_matrix_dims):
+            matrix = K.expand_dims(matrix, axis=1)
+        # This is a bit fancy - the dimensions we need to add are all of the dimensions from the
+        # attention "vector" that are _not_ already in the "matrix" - the slice
+        # [1:-(num_matrix_dims-1)] gives us this, cutting out the batch size at the beginning, and
+        # the shared matrix dims at the end.
+        missing_attention_dims = K.shape(attention_vector)[1:-(num_matrix_dims-1)]
+        # This will be a tensor like [1, attention_dims, 1, 1, 1], with one `1` for every dimension
+        # of the original matrix, _including_ the embedding dimension, which is ignored above.
+        # That's why there's no -1 in the [1] * (num_matrix_dims) here, while there was one in the
+        # line right above this one.
+        tile_shape = K.concatenate([[1], missing_attention_dims, [1] * (num_matrix_dims)], 0)
+        matrix = K.tile(matrix, tile_shape)
         return matrix
 
     @overrides

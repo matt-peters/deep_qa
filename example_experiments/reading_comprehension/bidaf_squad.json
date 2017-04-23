@@ -27,8 +27,6 @@
       "type": "adadelta",
       "lr": 0.5
     },
-    "max_training_instances": 100,
-    "max_validation_instances": 100,
     "use_data_generator": true,
     "use_dynamic_padding": true,
     "validation_files": ["/efs/data/dlfa/squad/processed/dev.tsv"],
